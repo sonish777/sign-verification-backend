@@ -1,0 +1,19 @@
+extends base
+
+block content 
+    .card 
+        .card-body
+            .card-title 
+                p.display-6 #{user.name}
+            - if(typeof (imageList) !== 'undefined')
+                each image in imageList
+                    img.m-1(src=`/static/${user.uploadPath.split("./images")[1]}/${image}` alt=`${user.name}` width="200")
+            
+    div.mt-3
+        - if(typeof (user.modelSavePath) === 'undefined')
+            p.lead 
+                | You haven't trained your images yet. 
+                a(href="")
+                    button.btn.btn-primary Start Training
+        - else 
+            p.lead Upload an image to test.
