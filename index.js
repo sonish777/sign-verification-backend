@@ -40,9 +40,22 @@ const storage = multer.diskStorage({
         cb(null, fileName);
     }
 });
+const testImageStorage = multer.diskStorage({
+    destination: function(req, file, cb) {
+        let uploadPath = './images/test';
+        cb(null, uploadPath);
+    },
+    filename: function(req, file, cb) {
+        let fileName = `${file.originalname.split(".")[0]}-${Date.now()}.${file.mimetype.split("/")[1]}`;
+        cb(null, fileName);
+    }
+})
 const upload = multer({
     storage
 });
+const uploadTest = multer({
+    storage: testImageStorage
+})
 
 app.use(express.json());
 app.use(express.urlencoded());   
@@ -50,17 +63,62 @@ app.use(express.static('./public'));
 app.use("/static", express.static('./images'));
 app.set('view engine', 'pug');
 
-app.get("/run-script", (req, res, next) => {
+app.post("/run-script", (req, res, next) => {
+    const trainPath = req.body.trainPath;
+    const name = req.body.name;
     const { spawn } = require('child_process');
-    const pyProg = spawn('python', ['./scripts/train.py', "images/binita"]);
+    const pyProg = spawn('python', ['./scripts/train.py', trainPath, name, "train"]);
 
-    pyProg.stdout.on('data', function(data) {
-        console.log(data.toString('utf-8'));
+    pyProg.stdout.on('data', async function(data) {
+        console.log("LOGGING DIRECTLY FROM SCRIPT ", data.toString('utf-8'));
+        let responseData = data.toString('utf-8');
+        if(responseData.includes("Model-Summary: ")) {
+            responseData = responseData.split("Model-Summary: ")[1];
+            let jsonData = JSON.parse(responseData);
+            await User.findOneAndUpdate({ name: name, trainPath: trainPath}, {
+                accuracy: jsonData.accuracy,
+                modelSavePath: jsonData.model_save_path
+            });
+        }
     });
 
     pyProg.stdout.on('end', function(data) {
-        console.log("DATA IS", data);
         res.end('Training completed!');
+    });
+
+    pyProg.stderr.on('data', function(data) {
+        console.log('stderr: Error is ' + data.toString('utf-8'));
+    });
+});
+
+app.post("/test", uploadTest.single('image'), (req, res) => {
+    const modelSavePath = req.body.modelSavePath;
+    const testPath = "./" + req.file.path;
+    const { spawn } = require('child_process');
+    const pyProg = spawn('python', ['./scripts/train.py', testPath, modelSavePath, "test"]);
+
+    pyProg.stdout.on('data', async function(data) {
+        console.log("LOGGING DIRECTLY FROM SCRIPT ", data.toString('utf-8'));
+        let responseData = data.toString('utf-8');
+        if(responseData.includes("Test-Summary: ")) {
+            responseData = responseData.split("Test-Summary: ")[1];
+            let jsonData = JSON.parse(responseData);
+            const user = await User.findOne({modelSavePath: modelSavePath});
+            let newTestResult = { testPath: testPath, testAccuracy: jsonData.test_accuracy };
+            if(!user.testResults) {
+                user.testResults = [];
+            }
+            user.testResults.push(newTestResult);
+            await user.save();
+        }
+    });
+
+    pyProg.stdout.on('end', function(data) {
+        res.end('Testing completed!');
+    });
+
+    pyProg.stderr.on('data', function(data) {
+        console.log('stderr: Error is ' + data.toString('utf-8'));
     });
 });
 
@@ -73,7 +131,7 @@ app.get("/add", (req, res) => {
     res.render("add", {url: "/add" });
 });
 
-app.get("/:id", async (req, res) => {
+app.get("/user/:id", async (req, res) => {
     const id = req.params.id;
     const user = await User.findById(id);
     fs.readdir(user.uploadPath, (err, files) => {

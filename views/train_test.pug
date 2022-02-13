@@ -13,7 +13,18 @@ block content
         - if(typeof (user.modelSavePath) === 'undefined')
             p.lead 
                 | You haven't trained your images yet. 
-                a(href="")
-                    button.btn.btn-primary Start Training
+                form(action="/run-script", method="post")
+                    input(type="text" name="name" value=user.name readonly style="width: 50%")
+                    input(type="text" name="trainPath" value=user.uploadPath readonly style="width: 50%")
+                    button.btn.btn-primary(type="submit") Start Training
         - else 
-            p.lead Upload an image to test.
+            form(action='/test' method='POST' enctype='multipart/form-data')
+                p.lead Upload an image to test.
+                div
+                    label.form-label(for='formFileMultiple') Model Weights Path
+                    | 
+                    input(type="text" name="modelSavePath" value=user.modelSavePath readonly style="width: 50%")
+                div.mb-2
+                    label.form-label(for='formFileMultiple') Upload an image
+                    input#formFileMultiple.form-control(type='file' name="image")
+                button.btn.btn-primary(type='submit') Submit
